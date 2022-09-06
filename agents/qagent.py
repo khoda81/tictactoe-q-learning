@@ -7,7 +7,7 @@ from collections import defaultdict
 import pickle
 from collections import namedtuple
 
-from agent import Agent
+from agents.agent import AgentBase
 
 
 class TicTacToeTable:
@@ -119,7 +119,7 @@ class TicTacToeTable:
 Gameplay = namedtuple('Gameplay', ['states', 'actions', 'rewards'])
 
 
-class QAgent(Agent):
+class QAgent(AgentBase):
     gameplays: list[Gameplay]
     current_gameplay: Gameplay
 
@@ -209,9 +209,3 @@ class QAgent(Agent):
         path = path or f"{self.name}.qtable"
         with open(path, 'wb') as f:
             pickle.dump(self.model, f)
-
-
-class RandomAgent(Agent):
-    def act(self, state: tuple[np.ndarray, bool]) -> int:
-        board, my_turn = state
-        return np.random.choice(np.where(board == 0)[0])
