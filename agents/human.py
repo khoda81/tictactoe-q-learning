@@ -30,5 +30,3 @@ class Human(AgentBase):
             print(f"{self.name}: Yay! 🎉")
         elif reward < 0:
             print(f"{self.name}: Boo! 😭")
-        else:
-            print(f"{self.name}: Meh! 😐")

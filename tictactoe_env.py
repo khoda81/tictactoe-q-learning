@@ -1,4 +1,6 @@
 import numpy as np
+import gym
+from gym.spaces import Discrete, Tuple, Box
 
 
 ICONS = ['⬜', '❌', '⭕']
@@ -14,16 +16,42 @@ def visualize_board(board):
     )
 
 
-class TicTacToeEnv:
+class TicTacToeEnv(gym.Env):
     def __init__(self):
+        self.action_space = Discrete(9)
+        self.observation_space = Tuple([
+            Tuple([
+                Box(0, 2, (9,)),
+                Discrete(2),
+            ]),
+            Tuple([
+                Box(0, 2, (9,)),
+                Discrete(2),
+            ]),
+        ])
+
+    def reset(self):
         self.board = np.zeros(9, dtype=np.int8)
         self.turn = False
 
-    def update(self, place):
-        if place not in range(9):
-            return
+        return self.observation()
 
-        if self.board[place]:
+    def step(self, actions):
+        self.update(actions[self.turn])
+        winner = self.winner()
+        rewards = [0, 0]
+        if winner == 1:
+            rewards = [1, -1]
+        elif winner == 2:
+            rewards = [-1, 1]
+
+        return self.observation(), rewards, winner is not None, {}
+
+    def render(self):
+        print(visualize_board(self.board))
+
+    def update(self, place):
+        if place not in range(9) or self.board[place]:
             return
 
         self.board[place] = self.turn + 1
@@ -43,17 +71,17 @@ class TicTacToeEnv:
             return 0
 
     def observation(self):
+        """
+        Returns a tuple of two observations, one for each player.
+        Observations are normalized such that each player thinks it is X.
+        """
+        obs1 = self.board.copy()
+
         obs2 = self.board.copy()
         mask = np.where(obs2 != 0)
         obs2[mask] = ((obs2[mask] - 1) ^ 1) + 1
 
         return (
-            (self.board.copy(), not self.turn),
+            (obs1, not self.turn),
             (obs2, self.turn),
         )
-
-    def render(self):
-        print(self)
-
-    def __repr__(self):
-        return visualize_board(self.board)

@@ -5,53 +5,7 @@ from tqdm import tqdm
 
 from agents import QAgent, Human, RandomAgent
 from agents.qagent import TicTacToeTable
-from tictactoe_env import ICONS, TicTacToeEnv, visualize_board
-
-
-def load_model():
-    "load model if exists"
-    if os.path.exists(MODEL_PATH):
-        model = TicTacToeTable.load(MODEL_PATH)
-    else:
-        model = TicTacToeTable()
-        model.sa1ve(MODEL_PATH)
-
-    return model
-
-
-def play_game(agent1, agent2, render=True):
-    env = TicTacToeEnv()
-
-    agent1.reset()
-    agent2.reset()
-
-    if render:
-        print(agent1, "vs", agent2)
-        env.render()
-
-    while (winner := env.winner()) is None:
-        obs1, obs2 = env.observation()
-        actions = [agent1.act(obs1), agent2.act(obs2)]
-
-        env.update(actions[env.turn])
-        if render:
-            print("-" * 5)
-            env.render()
-
-    if winner:
-        [agent1, agent2][winner - 1].reward(1)
-        [agent2, agent1][winner - 1].reward(-1)
-
-        if render:
-            print([agent1, agent2][winner - 1], "is the winner!")
-    else:
-        if render:
-            print("Tie!")
-
-    agent1.learn()
-    agent2.learn()
-
-    return winner
+from tictactoe_env import TicTacToeEnv, visualize_board
 
 
 MODEL_PATH = Path(__file__).parent / 'models/'
@@ -62,13 +16,63 @@ def find_model_path(path=MODEL_PATH, name=None):
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
 
-    # find model path
     if name is None:
-        model_path = next(path.glob('*.qtable'))
-    else:
-        model_path = next(path.glob(f'{name}*.qtable'))
+        name = 'model'
+
+    try:
+        # find model path
+        model_path = next(path.glob(f'*{name}*.qtable'))
+    except StopIteration:
+        model_path = path / f"{name}.qtable"
 
     return model_path
+
+
+def load_model(make_new=False, name=None):
+    path = find_model_path(name=name)
+    if os.path.exists(path):
+        return TicTacToeTable.load(path)
+    elif make_new:
+        model = TicTacToeTable()
+        model.save(path)
+        return model
+
+
+def play_game(agent1, agent2, render=True):
+    env = TicTacToeEnv()
+    obs1, obs2 = env.reset()
+
+    agent1.reset()
+    agent2.reset()
+
+    if render:
+        print(agent1, "vs", agent2)
+        env.render()
+
+    done = False
+    while not done:
+        actions = [agent1.act(obs1), agent2.act(obs2)]
+
+        (obs1, obs2), (reward1, reward2), done, info = env.step(actions)
+
+        agent1.reward(reward1)
+        agent2.reward(reward2)
+
+        if render:
+            print("-" * 5)
+            env.render()
+
+    if render:
+        winner = env.winner()
+        if winner:
+            print([agent1, agent2][winner - 1], "is the winner!")
+        else:
+            print("Tie!")
+
+    agent1.learn()
+    agent2.learn()
+
+    return winner
 
 
 def train(episodes=100, render=False):
@@ -102,11 +106,11 @@ def train(episodes=100, render=False):
 
     visualize_model(new_model)
 
-    model.save(MODEL_PATH)
+    model.save(find_model_path())
 
 
 def play():
-    model = load_model()
+    model = load_model(name="human-trained") or load_model()
 
     model.lr = .5
     agent1 = Human("Player1")
@@ -116,7 +120,7 @@ def play():
     while True:
         agent1, agent2 = random.sample([agent1, agent2], 2)
         play_game(agent1, agent2)
-        model.save(MODEL_PATH)
+        model.save(find_model_path(name="human-trained"))
 
 
 def visualize_model(model):

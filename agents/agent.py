@@ -20,6 +20,9 @@ class AgentBase(ABC):
     def learn(self):
         pass
 
+    def __call__(self, obs):
+        return self.act(obs)
+
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name})"
 
