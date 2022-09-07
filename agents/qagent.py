@@ -27,55 +27,54 @@ class TicTacToeTable:
 
     @staticmethod
     @cache
-    def _encode_board(new_board):
-        new_board = np.array(new_board).reshape(3, 3)
+    def _encode_board(board):
+        board_arr = np.array(board).reshape(3, 3)
         # find minimum id for board
         ids = []
 
         # generate all symmetries
         for i in range(4):
-            new_board = np.rot90(new_board)
+            board_arr = np.rot90(board_arr)
 
             # e, r, r2, r3
-            ids.append(np.sum(TicTacToeTable.mask * new_board))
+            ids.append(np.sum(TicTacToeTable.mask * board_arr))
 
             # ty, tAC, tx, tBD
-            ids.append(np.sum(TicTacToeTable.mask * np.fliplr(new_board)))
+            ids.append(np.sum(TicTacToeTable.mask * np.fliplr(board_arr)))
 
         return min(ids)
 
     @staticmethod
-    def decode_board(id):
+    def decode_state(id):
+        id, my_turn = divmod(id, 2)
         board = []
         for i in range(9):
             id, r = divmod(id, 3)
             board.append(r)
 
-        return np.array(board)
+        return np.array(board), my_turn
 
     @staticmethod
-    def to_id(state: tuple[np.ndarray, bool], action: int) -> int:
+    def encode_state_action(state: tuple[np.ndarray, bool], action: int) -> int:
         "Generate unique id for board and action pair"
         board, my_turn = state
-        if my_turn:
-            new_board = board.copy()
-            assert not new_board[action]
 
-            new_board[action] = 1
-            return TicTacToeTable.encode_board(new_board)
-        else:
-            return TicTacToeTable.encode_board(board)
+        if my_turn:
+            board = board.copy()
+
+            assert not board[action]
+            board[action] = 1
+
+        return TicTacToeTable.encode_board(board) * 2 + my_turn
 
     def update(self, state, action, target):
         delta = target - self[state, action]
-        self[
-            state,
-            action
-        ] += self.lr * delta
+        self[state, action] += self.lr * delta
+        return abs(delta)
 
     def items(self):
         for board, value in self.qtable.items():
-            yield self.decode_board(board), value
+            yield self.decode_state(board), value
 
     @staticmethod
     def load(path: Union[str, Path]) -> 'TicTacToeTable':
@@ -86,31 +85,31 @@ class TicTacToeTable:
         with open(path, 'wb') as f:
             pickle.dump(self, f)
 
-    def __call__(self, board: np.ndarray, action: int) -> float:
-        return self[board, action]
+    def __call__(self, state: np.ndarray, action: int) -> float:
+        return self[state, action]
 
     def __getitem__(self, key: tuple[np.ndarray, int]):
         state, action = key
-        return self.qtable.__getitem__(self.to_id(state, action))
+        return self.qtable.__getitem__(self.encode_state_action(state, action))
 
     def __setitem__(self, key: tuple[np.ndarray, int], value):
         state, action = key
-        return self.qtable.__setitem__(self.to_id(state, action), value)
+        return self.qtable.__setitem__(self.encode_state_action(state, action), value)
 
     def __delitem__(self, key: tuple[np.ndarray, int]):
         state, action = key
-        return self.qtable.__delitem__(self.to_id(state, action))
+        return self.qtable.__delitem__(self.encode_state_action(state, action))
 
     def __contains__(self, key: tuple[np.ndarray, int]):
         state, action = key
-        return self.qtable.__contains__(self.to_id(state, action))
+        return self.qtable.__contains__(self.encode_state_action(state, action))
 
     def __len__(self):
         return self.qtable.__len__()
 
     def __iter__(self):
-        for board in self.qtable:
-            yield self.decode_board(board)
+        for state in self.qtable:
+            yield self.decode_state(state)
 
     def __repr__(self):
         return f'TicTacToeTable(lr={self.lr})'
@@ -124,8 +123,8 @@ class QAgent(AgentBase):
     current_gameplay: Gameplay
 
     def __init__(
-            self, name, model=None, epsilon=0.2, gamma=0.99, max_gameplays=2,
-            decay_rate=1e-2):
+            self, name, model=None, epsilon=0.5, gamma=0.99, max_gameplays=10,
+            decay_rate=1e-3):
         super().__init__(name)
 
         self.gameplays = []
@@ -189,14 +188,17 @@ class QAgent(AgentBase):
     def learn(self) -> None:
         """Train on all gameplays and update q-model"""
 
+        loss = 0
         for gameplay in self.gameplays:
             gameplay = reversed(list(zip(gameplay.states, gameplay.actions, gameplay.rewards)))
             state, _, reward = next(gameplay)
             for prev_state, prev_action, prev_reward in gameplay:
                 max_q = max(self.model(state, i) for i in self.possible_moves(state))
                 q_target = reward + self.gamma * max_q
-                self.model.update(prev_state, prev_action, q_target)
+                loss += self.model.update(prev_state, prev_action, q_target)
                 state, _, reward = prev_state, prev_action, prev_reward
+
+        return loss
 
     def load_pretrained(self, path: Union[str, Path] = None) -> None:
         """Load the model from a file"""
